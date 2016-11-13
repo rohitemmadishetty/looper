@@ -63,6 +63,14 @@ def parse_arguments():
 	check_subparser = subparsers.add_parser(
 		"check", help="Remove all files of the project.")
 
+	# Monitor command
+	monitor_subparser = subparsers.add_parser(
+		"monitor", help="Monitor run of projects.")
+	monitor_subparser.add_argument(
+		'configs', type=str, nargs='+', help='Project YAML files of projects to monitor.')
+	monitor_subparser.add_argument(
+		'-p', dest='port', type=int, default=8080, help='Port to be used for app.')
+
 	# Common arguments
 	for subparser in [run_subparser, summarize_subparser, destroy_subparser, check_subparser]:
 		subparser.add_argument(
@@ -322,58 +330,58 @@ def summarize(prj):
 
 	print("Summary (n=" + str(len(stats)) + "): " + tsv_outfile_path)
 
-	# 	# There may be multiple pipeline outputs to consider.
-	# 	globs = glob.glob(os.path.join(pipeline_outfolder, "*stats.tsv"))
-	# 	print(globs)
+	#   # There may be multiple pipeline outputs to consider.
+	#   globs = glob.glob(os.path.join(pipeline_outfolder, "*stats.tsv"))
+	#   print(globs)
 
-	# 	for stats_filename in globs: # = os.path.join(pipeline_outfolder, pl_name, "_stats.tsv")
-	# 		pl_name = re.search(".*/(.*)_stats.tsv", stats_filename, re.IGNORECASE).group(1)
-	# 		print(pl_name)
-	# 		# Make sure file exists
-	# 		if os.path.isfile(stats_filename):
-	# 			stat_file = open(stats_filename, 'rb')
-	# 			print('Found: ' + stats_filename)
-	# 		else:
-	# 			pass # raise Exception(stat_file_path + " : file does not exist!")
+	#   for stats_filename in globs: # = os.path.join(pipeline_outfolder, pl_name, "_stats.tsv")
+	#       pl_name = re.search(".*/(.*)_stats.tsv", stats_filename, re.IGNORECASE).group(1)
+	#       print(pl_name)
+	#       # Make sure file exists
+	#       if os.path.isfile(stats_filename):
+	#           stat_file = open(stats_filename, 'rb')
+	#           print('Found: ' + stats_filename)
+	#       else:
+	#           pass # raise Exception(stat_file_path + " : file does not exist!")
 
-	# 		# Initialize column list for this pipeline if it hasn't been done.
-	# 		if not columns.has_key(pl_name):
-	# 			columns[pl_name] = []
-	# 		if not stats.has_key(pl_name):
-	# 			stats[pl_name] = []
+	#       # Initialize column list for this pipeline if it hasn't been done.
+	#       if not columns.has_key(pl_name):
+	#           columns[pl_name] = []
+	#       if not stats.has_key(pl_name):
+	#           stats[pl_name] = []
 
-	# 		# add all sample attributes?
-	# 		#row.update(sample.__dict__)
-	# 		#row = sample.__dict__
-	# 		row = sample.get_sheet_dict()
-	# 		for line in stat_file:
-	# 			key, value = line.split('\t')
-	# 			row[key] = value.strip()
+	#       # add all sample attributes?
+	#       #row.update(sample.__dict__)
+	#       #row = sample.__dict__
+	#       row = sample.get_sheet_dict()
+	#       for line in stat_file:
+	#           key, value = line.split('\t')
+	#           row[key] = value.strip()
 
-	# 		# Add these items as column names for this pipeline
-	# 		# Use extend instead of append because we're adding a [list] and not items.
-	# 		columns[pl_name].extend(row.keys())
-	# 		#print(columns[pl_name])
-	# 		stats[pl_name].append(row)
+	#       # Add these items as column names for this pipeline
+	#       # Use extend instead of append because we're adding a [list] and not items.
+	#       columns[pl_name].extend(row.keys())
+	#       #print(columns[pl_name])
+	#       stats[pl_name].append(row)
 
 	# # For each pipeline, write a summary tsv file.
 	# for pl_name, cols in columns.items():
-	# 	tsv_outfile_path = os.path.join(prj.paths.output_dir, prj.name)
-	# 	if prj.subproject:
-	# 		tsv_outfile_path += '_' + prj.subproject
-	# 	tsv_outfile_path += '_' + pl_name + '_stats_summary.tsv'
+	#   tsv_outfile_path = os.path.join(prj.paths.output_dir, prj.name)
+	#   if prj.subproject:
+	#       tsv_outfile_path += '_' + prj.subproject
+	#   tsv_outfile_path += '_' + pl_name + '_stats_summary.tsv'
 
-	# 	tsv_outfile = open(tsv_outfile_path, 'w')
+	#   tsv_outfile = open(tsv_outfile_path, 'w')
 
-	# 	tsv_writer = csv.DictWriter(tsv_outfile, fieldnames=uniqify(cols), delimiter='\t')
-	# 	tsv_writer.writeheader()
+	#   tsv_writer = csv.DictWriter(tsv_outfile, fieldnames=uniqify(cols), delimiter='\t')
+	#   tsv_writer.writeheader()
 
-	# 	for row in stats[pl_name]:
-	# 		tsv_writer.writerow(row)
+	#   for row in stats[pl_name]:
+	#       tsv_writer.writerow(row)
 
-	# 	tsv_outfile.close()
+	#   tsv_outfile.close()
 
-	# 	print("Pipeline " + pl_name + " summary (n=" + str(len(stats[pl_name])) + "): " + tsv_outfile_path)
+	#   print("Pipeline " + pl_name + " summary (n=" + str(len(stats[pl_name])) + "): " + tsv_outfile_path)
 
 
 def destroy(prj, args):
@@ -549,9 +557,63 @@ def check(prj):
 			subprocess.call(pf + "*/*" + f + ".flag 2> /dev/null", shell=True)
 
 
+def monitor(args):
+	"""
+	"""
+	try:
+		from flask import Flask, render_template
+		from flask.ext.bootstrap import Bootstrap
+	except ImportError:
+		print("Requirements not met.")
+		print("'Looper monitor' requires Flask and Flask-bootstrap to be installed.")
+		return 1
+	import re
+
+	app = Flask(__name__)
+	Bootstrap(app)
+
+	@app.route('/')
+	def index():
+		# Start projects
+		prjs = [Project(yaml_file) for yaml_file in args.configs]
+
+		for prj in prjs:
+			# Run stats check
+			summarize(prj)  # <- in future this should return the stats table
+
+			prj.current_stats = (
+				_pd.read_csv(os.path.join(prj.paths.output_dir, "{}_stats_summary.tsv".format(prj.name)), sep="\t")
+			)
+			# Label with project name
+			prj.current_stats["Project"] = prj.name
+			# Add job status (running/failed/success)
+			# prj.current_stats["Status"] = prj.current_stats.apply(lambda x: x)
+			# Add time since completion
+			# prj.current_stats["Time since"] = _pd.Timestamp("now") - prj.current_stats["Success"]
+
+		# Concatenate stats
+		df = _pd.concat([prj.current_stats for prj in prjs])
+
+		# Sort and make html
+		# df = df.sort_values("Project", "Status", "Time since")
+		dfh = re.sub('class="dataframe"', 'class="dataframe" id="stats_table"', df.to_html())
+		return render_template(
+			"stats.html",
+			stats_table=dfh)
+
+	@app.route('/about/', methods=['GET'])
+	def about():
+		return render_template('about.html')
+
+	app.run(port=args.port, debug=True)
+
+
 def main():
 	# Parse command-line arguments
 	args, remaining_args = parse_arguments()
+
+	if args.command == "monitor":
+		return monitor(args)
 
 	# Initialize project
 	prj = Project(args.config_file, args.subproject, file_checks=args.file_checks)
