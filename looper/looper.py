@@ -507,6 +507,9 @@ def summarize(prj):
         stats.append(sample_stats)
         columns.extend(t.key.tolist())
 
+    # reset
+    _start_counter(prj.num_samples)
+    figs = {}
     for sample in prj.samples:
         _LOGGER.info(_COUNTER.show(sample.sample_name, sample.protocol))
         sample_output_folder = os.path.join(
@@ -528,7 +531,9 @@ def summarize(prj):
         dupes = t.duplicated(subset=['key'], keep=False)
         t.loc[dupes, 'key'] = t.loc[dupes, 'plkey']
 
-        figs.append(t)
+        for i, r in t.iterrows():
+            print(i, r)
+            figs.setdefault(r.key,{}).update({sample.sample_name: r.value})
 
     # all samples are parsed. Produce file.
 
@@ -537,16 +542,13 @@ def summarize(prj):
         tsv_outfile_path += '_' + prj.subproject
     tsv_outfile_path += '_stats_summary.tsv'
 
-    tsv_outfile = open(tsv_outfile_path, 'w')
+    with open(tsv_outfile_path, 'w') as tsv_outfile:
+        tsv_writer = csv.DictWriter(tsv_outfile, fieldnames=uniqify(columns),
+                                    delimiter='\t', extrasaction='ignore')
+        tsv_writer.writeheader()
 
-    tsv_writer = csv.DictWriter(tsv_outfile, fieldnames=uniqify(columns),
-                                delimiter='\t', extrasaction='ignore')
-    tsv_writer.writeheader()
-
-    for row in stats:
-        tsv_writer.writerow(row)
-
-    tsv_outfile.close()
+        for row in stats:
+            tsv_writer.writerow(row)
 
     figs_tsv_path = "{root}_figs_summary.tsv".format(
         root=os.path.join(prj.metadata.output_dir, prj.name))
@@ -555,14 +557,29 @@ def summarize(prj):
     figs_html_path = "{root}_figs_summary.html".format(
         root=os.path.join(prj.metadata.output_dir, prj.name))
 
-    figs_html_file = open(figs_html_path, 'w')
+    img_template ="<a href='{path}'><img src='{path}'></a><br>{sample}\n"
 
-    img_code ="<h1>{key}</h1><a href='{path}'><img src='{path}'></a>\n"
-    for fig in figs:
-        figs_html_file.write(img_code.format(
-            key=str(fig['key']), path=fig['value']))
+    pdf_template ="<a href='{path}'><embed src='{path}' width='500' height='375' type='application/pdf'></a><br>{sample}\n"
 
-    figs_html_file.close()
+
+    with open(figs_html_path, 'w') as figs_html_file:
+        for figkey, sample_figures in figs.items():
+            _LOGGER.debug(figkey, sample_figures)
+            
+            figs_html_file.write("<h1>{key}</h1>\n".format(key=figkey))
+
+            for samp, path in sample_figures.items():
+                extension = os.path.splitext(path)[1]
+                if extension == ".pdf":
+                    img_code = pdf_template
+                else:
+                    img_code = img_template
+
+                path_deep = os.path.join(prj.metadata.output_dir, 
+                    prj.metadata.results_subdir, samp, path)
+                figs_html_file.write(img_code.format(
+                    path=path_deep, sample=samp))
+
     _LOGGER.info("Summary (n=" + str(len(stats)) + "): " + tsv_outfile_path)
 
 
